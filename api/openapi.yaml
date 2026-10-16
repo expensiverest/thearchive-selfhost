@@ -1,0 +1,2806 @@
+openapi: 3.1.0
+info:
+  title: Music Workspace Server API
+  version: 0.3.0
+  description: |
+    Versioned contract for the self-hosted server API (product API "1.0", advertised in the
+    discovery response). This file is the source of truth for generated TypeScript clients in
+    `packages/api-client`; a drift test keeps them in sync.
+
+    **Implementation status:** no routes are deployed yet. Implementations land per task:
+    auth/projects/library in P0-06, uploads/media in P0-07, sync in P0-08. Until a route's
+    access policy is tested (see `docs/security/permissions-contract.md`), it stays
+    contract-only.
+  x-contract-status: v1 draft (P0-05) - routes implemented from P0-06 onward
+servers:
+  - url: "{installationBaseUrl}"
+    description: |
+      A self-hosted installation. Clients discover the concrete base path from
+      `/.well-known/music-workspace` (`api_base`, currently `/api/v1`).
+    variables:
+      installationBaseUrl:
+        default: https://example.invalid
+security:
+  - bearerAuth: []
+tags:
+  - name: discovery
+    description: Public installation metadata (no authentication).
+  - name: auth
+    description: Invitation-only accounts and sessions (P0-06).
+  - name: admin
+    description: Instance-administrator-only user management.
+  - name: projects
+    description: Projects, membership and roles (P0-06).
+  - name: library
+    description: Folders, songs, variants and immutable revision selection (P0-06).
+  - name: uploads
+    description: Resumable chunked uploads with checksum verification (P0-07).
+  - name: media
+    description: Blob manifests and chunk streams (P0-07).
+  - name: sync
+    description: Cursor-based change feed and idempotent mutations (P0-08).
+paths:
+  /api/v1/auth/account:
+    delete:
+      operationId: deleteAccount
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string, maxLength: 1024 }
+      responses:
+        "204": { description: Account deleted or anonymised; all sessions revoked }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409":
+          description: owns_shared_projects (transfer ownership or remove other active members), or last_admin
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "429":
+          description: Rate limited
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /api/v1/admin/users:
+    get:
+      tags: [admin]
+      operationId: listAdminUsers
+      responses:
+        "200":
+          description: Instance users (invited placeholders excluded)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/AdminUser" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/users/{user_id}:
+    patch:
+      tags: [admin]
+      operationId: updateAdminUser
+      parameters:
+        - in: path
+          name: user_id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              minProperties: 1
+              properties:
+                status: { type: string, enum: [active, disabled] }
+                storage_quota_bytes: { type: [integer, "null"], minimum: 0 }
+      responses:
+        "200":
+          description: Updated user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AdminUser" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+  /api/v1/songs/{song_id}/lyrics/export:
+    {
+      "get":
+        {
+          "operationId": "exportLyrics",
+          "parameters":
+            [
+              {
+                "in": "path",
+                "name": "song_id",
+                "required": true,
+                "schema": { "type": "string", "format": "uuid" },
+              },
+              {
+                "in": "query",
+                "name": "format",
+                "schema": { "type": "string", "enum": ["lrc", "ttml"] },
+                "required": true,
+              },
+              {
+                "in": "query",
+                "name": "revision_id",
+                "schema": { "type": "string", "format": "uuid" },
+                "required": true,
+              },
+              {
+                "in": "query",
+                "name": "word_level",
+                "schema": { "type": "boolean", "default": false },
+              },
+            ],
+          "responses":
+            {
+              "200":
+                {
+                  "description": "User-authored timing export",
+                  "content":
+                    {
+                      "text/plain; charset=utf-8": { "schema": { "type": "string" } },
+                      "application/ttml+xml": { "schema": { "type": "string" } },
+                    },
+                },
+              "400":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "401":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "403":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "404":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "409":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "429":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+            },
+          "tags": ["library"],
+        },
+    }
+
+  /api/v1/library/folders/{id}/projects:
+    {
+      "put":
+        {
+          "operationId": "setLibraryFolderProjects",
+          "parameters":
+            [
+              {
+                "in": "path",
+                "name": "id",
+                "required": true,
+                "schema": { "type": "string", "format": "uuid" },
+              },
+            ],
+          "responses":
+            {
+              "200":
+                {
+                  "description": "Success",
+                  "content":
+                    {
+                      "application/json":
+                        { "schema": { "$ref": "#/components/schemas/LibraryFolder" } },
+                    },
+                },
+              "400":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "401":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "403":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "404":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "409":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "429":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+            },
+          "requestBody":
+            {
+              "required": true,
+              "content":
+                {
+                  "application/json":
+                    {
+                      "schema":
+                        {
+                          "type": "object",
+                          "properties":
+                            {
+                              "project_ids":
+                                {
+                                  "type": "array",
+                                  "items": { "type": "string", "format": "uuid" },
+                                  "maxItems": 1000,
+                                  "uniqueItems": true,
+                                },
+                              "expected_version": { "type": "integer", "minimum": 0 },
+                            },
+                          "required": ["project_ids", "expected_version"],
+                        },
+                    },
+                },
+            },
+          "tags": ["library"],
+        },
+    }
+
+  /api/v1/library/folders/{id}:
+    {
+      "patch":
+        {
+          "operationId": "updateLibraryFolder",
+          "parameters":
+            [
+              {
+                "in": "path",
+                "name": "id",
+                "required": true,
+                "schema": { "type": "string", "format": "uuid" },
+              },
+            ],
+          "responses":
+            {
+              "200":
+                {
+                  "description": "Success",
+                  "content":
+                    {
+                      "application/json":
+                        { "schema": { "$ref": "#/components/schemas/LibraryFolder" } },
+                    },
+                },
+              "400":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "401":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "403":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "404":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "409":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "429":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+            },
+          "requestBody":
+            {
+              "required": true,
+              "content":
+                {
+                  "application/json":
+                    {
+                      "schema":
+                        {
+                          "type": "object",
+                          "properties":
+                            {
+                              "expected_version": { "type": "integer", "minimum": 0 },
+                              "title": { "type": "string", "minLength": 1, "maxLength": 500 },
+                              "parent_id": { "type": ["string", "null"], "format": "uuid" },
+                            },
+                          "required": ["expected_version"],
+                        },
+                    },
+                },
+            },
+          "tags": ["library"],
+        },
+      "delete":
+        {
+          "operationId": "deleteLibraryFolder",
+          "parameters":
+            [
+              {
+                "in": "path",
+                "name": "id",
+                "required": true,
+                "schema": { "type": "string", "format": "uuid" },
+              },
+              {
+                "in": "query",
+                "name": "expected_version",
+                "schema": { "type": "integer", "minimum": 0 },
+                "required": true,
+              },
+            ],
+          "responses":
+            {
+              "204": { "description": "Success" },
+              "400":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "401":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "403":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "404":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "409":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "429":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+            },
+          "tags": ["library"],
+        },
+    }
+
+  /api/v1/library/folders:
+    {
+      "get":
+        {
+          "operationId": "listLibraryFolders",
+          "parameters": [],
+          "responses":
+            {
+              "200":
+                {
+                  "description": "Success",
+                  "content":
+                    {
+                      "application/json":
+                        {
+                          "schema":
+                            {
+                              "type": "object",
+                              "properties":
+                                {
+                                  "items":
+                                    {
+                                      "type": "array",
+                                      "items": { "$ref": "#/components/schemas/LibraryFolder" },
+                                    },
+                                },
+                              "required": ["items"],
+                            },
+                        },
+                    },
+                },
+              "400":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "401":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "403":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "404":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "409":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "429":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+            },
+          "tags": ["library"],
+        },
+      "post":
+        {
+          "operationId": "createLibraryFolder",
+          "parameters": [],
+          "responses":
+            {
+              "201":
+                {
+                  "description": "Success",
+                  "content":
+                    {
+                      "application/json":
+                        { "schema": { "$ref": "#/components/schemas/LibraryFolder" } },
+                    },
+                },
+              "400":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "401":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "403":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "404":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "409":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "429":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+            },
+          "requestBody":
+            {
+              "required": true,
+              "content":
+                {
+                  "application/json":
+                    {
+                      "schema":
+                        {
+                          "type": "object",
+                          "properties":
+                            {
+                              "title": { "type": "string", "minLength": 1, "maxLength": 500 },
+                              "parent_id": { "type": ["string", "null"], "format": "uuid" },
+                            },
+                          "required": ["title"],
+                        },
+                    },
+                },
+            },
+          "tags": ["library"],
+        },
+    }
+
+  /api/v1/activity:
+    {
+      "get":
+        {
+          "operationId": "listActivity",
+          "parameters":
+            [
+              { "in": "query", "name": "before", "schema": { "type": "string" } },
+              {
+                "in": "query",
+                "name": "limit",
+                "schema": { "type": "integer", "minimum": 1, "maximum": 50, "default": 20 },
+              },
+            ],
+          "responses":
+            {
+              "200":
+                {
+                  "description": "Success",
+                  "content":
+                    {
+                      "application/json":
+                        {
+                          "schema":
+                            {
+                              "type": "object",
+                              "properties":
+                                {
+                                  "items":
+                                    {
+                                      "type": "array",
+                                      "items": { "$ref": "#/components/schemas/ActivityItem" },
+                                    },
+                                  "next_before": { "type": ["string", "null"] },
+                                },
+                              "required": ["items", "next_before"],
+                            },
+                        },
+                    },
+                },
+              "400":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "401":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "403":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "404":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "409":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "429":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+            },
+          "tags": ["library"],
+        },
+    }
+
+  /api/v1/search:
+    {
+      "get":
+        {
+          "operationId": "search",
+          "parameters":
+            [
+              {
+                "in": "query",
+                "name": "q",
+                "schema": { "type": "string", "minLength": 1, "maxLength": 200 },
+                "required": true,
+              },
+              {
+                "in": "query",
+                "name": "limit",
+                "schema": { "type": "integer", "minimum": 1, "maximum": 50, "default": 20 },
+              },
+            ],
+          "responses":
+            {
+              "200":
+                {
+                  "description": "Success",
+                  "content":
+                    {
+                      "application/json":
+                        { "schema": { "$ref": "#/components/schemas/SearchResult" } },
+                    },
+                },
+              "400":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "401":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "403":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "404":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "409":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "429":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+            },
+          "tags": ["library"],
+        },
+    }
+
+  /api/v1/auth/password:
+    {
+      "post":
+        {
+          "operationId": "changePassword",
+          "parameters": [],
+          "responses":
+            {
+              "204": { "description": "Success" },
+              "400":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "401":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "403":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "404":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "409":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "429":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+            },
+          "requestBody":
+            {
+              "required": true,
+              "content":
+                {
+                  "application/json":
+                    {
+                      "schema":
+                        {
+                          "type": "object",
+                          "properties":
+                            {
+                              "current_password": { "type": "string", "maxLength": 1024 },
+                              "new_password":
+                                { "type": "string", "minLength": 12, "maxLength": 1024 },
+                            },
+                          "required": ["current_password", "new_password"],
+                        },
+                    },
+                },
+            },
+          "tags": ["auth"],
+        },
+    }
+
+  /.well-known/music-workspace:
+    get:
+      operationId: getWellKnownMusicWorkspace
+      tags: [discovery]
+      summary: Public installation discovery (proposed route; may change before its implementation)
+      description: |
+        Unauthenticated metadata used by clients to validate HTTPS, check the installation ID and
+        API compatibility before authenticating. Must not leak tokens.
+      security: []
+      responses:
+        "200":
+          description: Installation metadata.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServerDiscovery"
+
+  /api/v1/auth/sessions:
+    post:
+      operationId: createSession
+      tags: [auth]
+      summary: Sign in with email and password (P0-06)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SessionCreate"
+      responses:
+        "201":
+          description: Session created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionToken"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /api/v1/auth/sessions/current:
+    get:
+      operationId: getCurrentSession
+      tags: [auth]
+      summary: Current session and user (P0-06)
+      responses:
+        "200":
+          description: Current session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentSession"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    delete:
+      operationId: revokeCurrentSession
+      tags: [auth]
+      summary: Revoke the current session (logout) (P0-06)
+      responses:
+        "204":
+          description: Session revoked.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/auth/invitations/{token}/accept:
+    post:
+      operationId: acceptInvitation
+      tags: [auth]
+      summary: Accept an invitation, set a password and open a session (P0-06)
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Invitation token from the invite link.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvitationAccept"
+      responses:
+        "201":
+          description: Account activated and session created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionToken"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "429":
+          $ref: "#/components/responses/TooManyRequests"
+
+  /api/v1/projects:
+    get:
+      operationId: listProjects
+      tags: [projects]
+      summary: List projects visible to the caller (P0-06)
+      responses:
+        "200":
+          description: Projects the caller is an active member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      operationId: createProject
+      tags: [projects]
+      summary: Create a project (caller becomes owner) (P0-06)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectCreate"
+      responses:
+        "201":
+          description: Project created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          $ref: "#/components/responses/ValidationFailed"
+
+  /api/v1/projects/{project_id}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: getProject
+      tags: [projects]
+      summary: Get one project (P0-06)
+      responses:
+        "200":
+          description: Project.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateProject
+      tags: [projects]
+      summary: Update project fields with optimistic concurrency (P0-06)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProjectUpdate"
+      responses:
+        "200":
+          description: Updated project.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/projects/{project_id}/detail:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: getProjectDetail
+      tags: [projects]
+      summary: Aggregate project screen read - project, songs with variant counts and durations, and members in one request
+      responses:
+        "200":
+          description: Project with its songs (variant_count, duration_sec) and memberships.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/projects/{project_id}/members:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listMembers
+      tags: [projects]
+      summary: List project memberships (P0-06)
+      responses:
+        "200":
+          description: Memberships.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipList"
+    post:
+      operationId: inviteMember
+      tags: [projects]
+      summary: Invite a member with a role (owner only) (P0-06)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberInvite"
+      responses:
+        "201":
+          description: Invitation created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Membership"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/projects/{project_id}/members/{user_id}:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+      - $ref: "#/components/parameters/UserId"
+    patch:
+      operationId: updateMember
+      tags: [projects]
+      summary: Change a member's role or status (owner only; last owner protected) (P0-06)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberUpdate"
+      responses:
+        "200":
+          description: Updated membership.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Membership"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      operationId: removeMember
+      tags: [projects]
+      summary: Remove a member (owner only; last owner protected) (P0-06)
+      responses:
+        "204":
+          description: Membership removed.
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/projects/{project_id}/artwork:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    post:
+      operationId: uploadProjectArtwork
+      tags: [projects]
+      summary: Upload a project cover JPEG (owner/editor; rejected on e2ee projects) (ADR-0003)
+      requestBody:
+        required: true
+        content:
+          image/jpeg:
+            schema:
+              type: string
+              format: binary
+              maxLength: 2097152
+      responses:
+        "200":
+          description: Updated project. Bytes are a blob, not an audio revision.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      operationId: deleteProjectArtwork
+      tags: [projects]
+      summary: Clear project artwork (owner/editor) (ADR-0003)
+      responses:
+        "200":
+          description: Updated project with artwork cleared.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/projects/{project_id}/folders:
+    parameters:
+      - $ref: "#/components/parameters/ProjectId"
+    get:
+      operationId: listFolders
+      tags: [library]
+      summary: List folders in a project (P0-06)
+      responses:
+        "200":
+          description: Folders.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FolderList"
+    post:
+      operationId: createFolder
+      tags: [library]
+      summary: Create a folder (owner/editor) (P0-06)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FolderCreate"
+      responses:
+        "201":
+          description: Folder created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Folder"
+
+  /api/v1/folders/{folder_id}:
+    parameters:
+      - $ref: "#/components/parameters/FolderId"
+    patch:
+      operationId: updateFolder
+      tags: [library]
+      summary: Rename or move a folder (stable IDs; cycles rejected) (P0-06)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FolderUpdate"
+      responses:
+        "200":
+          description: Updated folder.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Folder"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/songs:
+    get:
+      operationId: listSongs
+      tags: [library]
+      summary: List songs in a project (optionally inside a folder) (P0-06)
+      parameters:
+        - $ref: "#/components/parameters/ProjectIdQuery"
+        - name: folder_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Songs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SongList"
+    post:
+      operationId: createSong
+      tags: [library]
+      summary: Create a song (owner/editor) (P0-06)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SongCreate"
+      responses:
+        "201":
+          description: Song created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Song"
+
+  /api/v1/songs/{song_id}:
+    parameters:
+      - $ref: "#/components/parameters/SongId"
+    get:
+      operationId: getSong
+      tags: [library]
+      summary: Get one song (P0-06)
+      responses:
+        "200":
+          description: Song.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Song"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateSong
+      tags: [library]
+      summary: Update song title/metadata (owner/editor) (P0-06)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SongUpdate"
+      responses:
+        "200":
+          description: Updated song.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Song"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/songs/{song_id}/detail:
+    parameters:
+      - $ref: "#/components/parameters/SongId"
+    get:
+      operationId: getSongDetail
+      tags: [library]
+      summary: Aggregate song screen read - song, project, members, variants with revisions, lyrics, timing and position in one request
+      responses:
+        "200":
+          description: Song with its project, members, variants/revisions, lyrics, timing and 1-based position.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SongDetail"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/songs/{song_id}/lyrics:
+    parameters:
+      - $ref: "#/components/parameters/SongId"
+    get:
+      operationId: getSongLyrics
+      tags: [library]
+      summary: Canonical lyric lines for a song (any member). Version 0 means none stored yet (ADR-0004)
+      responses:
+        "200":
+          description: Lyric lines. Empty with version 0 when nothing has been saved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SongLyrics"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: putSongLyrics
+      tags: [library]
+      summary: Replace canonical lyric lines (owner/editor; standard projects only) (ADR-0004)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SongLyricsUpdate"
+      responses:
+        "200":
+          description: Saved lyric lines.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SongLyrics"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/songs/{song_id}/variants:
+    parameters:
+      - $ref: "#/components/parameters/SongId"
+    get:
+      operationId: listVariants
+      tags: [library]
+      summary: List a song's variants (P0-06)
+      responses:
+        "200":
+          description: Variants.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VariantList"
+    post:
+      operationId: createVariant
+      tags: [library]
+      summary: Create a named variant (owner/editor) (P0-06)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VariantCreate"
+      responses:
+        "201":
+          description: Variant created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Variant"
+
+  /api/v1/variants/{variant_id}:
+    parameters:
+      - $ref: "#/components/parameters/VariantId"
+    patch:
+      operationId: updateVariant
+      tags: [library]
+      summary: Rename a variant (owner/editor) (P0-06)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VariantUpdate"
+      responses:
+        "200":
+          description: Updated variant.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Variant"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/variants/{variant_id}/revisions:
+    parameters:
+      - $ref: "#/components/parameters/VariantId"
+    get:
+      operationId: listRevisions
+      tags: [library]
+      summary: List immutable audio revisions of a variant (newest first) (P0-06)
+      responses:
+        "200":
+          description: Revisions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AudioRevisionList"
+
+  /api/v1/variants/{variant_id}/revisions/{revision_id}/lyric-timing:
+    parameters:
+      - $ref: "#/components/parameters/VariantId"
+      - $ref: "#/components/parameters/RevisionId"
+    get:
+      operationId: getLyricTiming
+      tags: [library]
+      summary: Timing map for one audio revision (any member). Not inferred (ADR-0004)
+      responses:
+        "200":
+          description: Timing map. Empty with version 0 when nothing has been saved.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LyricTiming"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    put:
+      operationId: putLyricTiming
+      tags: [library]
+      summary: Replace the timing map for one revision (owner/editor; standard projects only) (ADR-0004)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LyricTimingUpdate"
+      responses:
+        "200":
+          description: Saved timing map.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LyricTiming"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/variants/{variant_id}/select-head:
+    parameters:
+      - $ref: "#/components/parameters/VariantId"
+    post:
+      operationId: selectRevisionHead
+      tags: [library]
+      summary: Elect a revision as the variant head (no deletion of newer revisions) (P0-06)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SelectHead"
+      responses:
+        "200":
+          description: Updated variant with the new head.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Variant"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/v1/uploads:
+    post:
+      operationId: createUpload
+      tags: [uploads]
+      summary: Start a resumable upload session (owner/editor) (P0-07)
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UploadCreate"
+      responses:
+        "201":
+          description: Upload session created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadSession"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "413":
+          description: Declared size exceeds the server or quota limit.
+
+  /api/v1/uploads/{upload_id}:
+    {
+      "parameters": [{ "$ref": "#/components/parameters/UploadId" }],
+      "head":
+        {
+          "operationId": "getUploadStatus",
+          "tags": ["uploads"],
+          "summary": "Resume information for an upload session (P0-07)",
+          "responses":
+            {
+              "200":
+                {
+                  "description": "Current session state.",
+                  "content":
+                    {
+                      "application/json":
+                        { "schema": { "$ref": "#/components/schemas/UploadSession" } },
+                    },
+                },
+              "404": { "$ref": "#/components/responses/NotFound" },
+            },
+        },
+      "patch":
+        {
+          "operationId": "uploadChunk",
+          "tags": ["uploads"],
+          "summary": "Upload one chunk (resumable; idempotent per offset) (P0-07)",
+          "parameters":
+            [
+              {
+                "name": "Upload-Offset",
+                "in": "header",
+                "required": true,
+                "schema": { "type": "integer", "format": "int64", "minimum": 0 },
+                "description": "Absolute byte offset this chunk starts at. Must match the server's next expected offset.",
+              },
+            ],
+          "requestBody":
+            {
+              "required": true,
+              "content":
+                {
+                  "application/octet-stream":
+                    { "schema": { "type": "string", "format": "binary" } },
+                },
+            },
+          "responses":
+            {
+              "200":
+                {
+                  "description": "Chunk accepted.",
+                  "content":
+                    {
+                      "application/json":
+                        { "schema": { "$ref": "#/components/schemas/UploadChunkAck" } },
+                    },
+                },
+              "409": { "$ref": "#/components/responses/Conflict" },
+              "413": { "description": "Chunk exceeds the advertised max_chunk_bytes." },
+            },
+        },
+      "delete":
+        {
+          "operationId": "cancelUpload",
+          "tags": ["uploads"],
+          "summary": "Cancel an upload session; staged bytes are discarded (P0-07)",
+          "responses": { "204": { "description": "Session cancelled." } },
+        },
+      "get":
+        {
+          "operationId": "getUpload",
+          "parameters":
+            [
+              {
+                "in": "path",
+                "name": "upload_id",
+                "required": true,
+                "schema": { "type": "string", "format": "uuid" },
+              },
+            ],
+          "responses":
+            {
+              "200":
+                {
+                  "description": "Success",
+                  "content":
+                    {
+                      "application/json":
+                        { "schema": { "$ref": "#/components/schemas/UploadSession" } },
+                    },
+                },
+              "400":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "401":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "403":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "404":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "409":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+              "429":
+                {
+                  "description": "Request failed",
+                  "content":
+                    { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } },
+                },
+            },
+          "tags": ["uploads"],
+        },
+    }
+
+  /api/v1/uploads/{upload_id}/finalize:
+    parameters:
+      - $ref: "#/components/parameters/UploadId"
+    post:
+      operationId: finalizeUpload
+      tags: [uploads]
+      summary: Verify checksum and commit an immutable revision (P0-07)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FinalizeUpload"
+      responses:
+        "201":
+          description: Immutable revision committed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AudioRevision"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          description: Checksum or size mismatch; nothing was committed.
+
+  /api/v1/media/{blob_id}/manifest:
+    parameters:
+      - $ref: "#/components/parameters/BlobId"
+    get:
+      operationId: getBlobManifest
+      tags: [media]
+      summary: Manifest for streaming/downloading a committed blob (P0-07)
+      responses:
+        "200":
+          description: Blob manifest.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlobManifest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/media/{blob_id}/chunks/{chunk_number}:
+    parameters:
+      - $ref: "#/components/parameters/BlobId"
+      - name: chunk_number
+        in: path
+        required: true
+        schema:
+          type: integer
+          minimum: 0
+    get:
+      operationId: getBlobChunk
+      tags: [media]
+      summary: Fetch one blob chunk (access-controlled; never a filesystem path) (P0-07)
+      responses:
+        "200":
+          description: Chunk bytes.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/sync:
+    get:
+      operationId: getSyncEvents
+      tags: [sync]
+      summary: Change events after an opaque cursor, filtered by current ACL (P0-08)
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Last processed cursor. Absent means from the beginning/baseline.
+        - name: project_id
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        "200":
+          description: A page of events and the next cursor.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SyncPage"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/mutations:
+    post:
+      operationId: submitMutation
+      tags: [sync]
+      summary: Submit an idempotent mutation (offline outbox replay) (P0-08)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MutationRequest"
+      responses:
+        "200":
+          description: |
+            Mutation result. Replaying the same operation_id returns the original result without
+            applying it twice.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MutationResult"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Short-lived session access token bound to the installation (P0-06).
+
+  parameters:
+    ProjectId:
+      name: project_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    ProjectIdQuery:
+      name: project_id
+      in: query
+      required: true
+      schema:
+        type: string
+        format: uuid
+    FolderId:
+      name: folder_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    SongId:
+      name: song_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    VariantId:
+      name: variant_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RevisionId:
+      name: revision_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    BlobId:
+      name: blob_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    UploadId:
+      name: upload_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    UserId:
+      name: user_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema:
+        type: string
+        maxLength: 128
+      description: Client-generated idempotency key for safe retries.
+
+  responses:
+    Unauthorized:
+      description: Missing, expired or revoked session.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: Authenticated but not permitted for this action.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: Not found, or not visible to the caller (no existence leak).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: |
+        State conflict: optimistic version mismatch, duplicate/idempotency conflict, offset
+        mismatch or a protected invariant (for example removing the last owner).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    ValidationFailed:
+      description: Request failed validation; the response explains which fields.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    TooManyRequests:
+      description: Rate limited; retry after the indicated delay.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    LibraryFolder:
+      {
+        "type": "object",
+        "properties":
+          {
+            "id": { "type": "string", "format": "uuid" },
+            "title": { "type": "string" },
+            "parent_id": { "type": ["string", "null"], "format": "uuid" },
+            "version": { "type": "integer", "minimum": 0 },
+            "project_ids": { "type": "array", "items": { "type": "string", "format": "uuid" } },
+          },
+        "required": ["id", "title", "parent_id", "version", "project_ids"],
+      }
+    SearchResult:
+      {
+        "type": "object",
+        "properties":
+          {
+            "projects": { "type": "array", "items": { "$ref": "#/components/schemas/Project" } },
+            "songs":
+              {
+                "type": "array",
+                "items":
+                  {
+                    "type": "object",
+                    "properties":
+                      {
+                        "song": { "$ref": "#/components/schemas/Song" },
+                        "project_id": { "type": "string", "format": "uuid" },
+                        "project_title": { "type": ["string", "null"] },
+                      },
+                    "required": ["song", "project_id", "project_title"],
+                  },
+              },
+          },
+        "required": ["projects", "songs"],
+      }
+    ActivityItem:
+      {
+        "type": "object",
+        "properties":
+          {
+            "id": { "type": "string" },
+            "project_id": { "type": "string", "format": "uuid" },
+            "project_title": { "type": ["string", "null"] },
+            "actor_user_id": { "type": ["string", "null"], "format": "uuid" },
+            "actor_display_name": { "type": ["string", "null"] },
+            "entity_class": { "type": "string" },
+            "entity_id": { "type": ["string", "null"] },
+            "entity_title": { "type": ["string", "null"] },
+            "operation": { "type": "string" },
+            "occurred_at": { "type": "string", "format": "date-time" },
+          },
+        "required":
+          [
+            "id",
+            "project_id",
+            "project_title",
+            "actor_user_id",
+            "actor_display_name",
+            "entity_class",
+            "entity_id",
+            "entity_title",
+            "operation",
+            "occurred_at",
+          ],
+      }
+    ServerDiscovery:
+      type: object
+      description: |
+        Discovery response. Unknown fields are tolerated by clients (forward compatibility).
+        `installation_id` is stable per installation; clients warn on silent identity changes.
+      required:
+        - installation_id
+        - product_api
+        - api_base
+        - features
+        - server_public_key
+        - server_version
+        - min_app_version
+      properties:
+        server_version: { type: string }
+        min_app_version: { type: string }
+        installation_id:
+          type: string
+          format: uuid
+          description: Stable installation identity (UUID v4 in v1).
+        product_api:
+          type: string
+          examples: ["1.0"]
+          description: Product API compatibility version.
+        api_base:
+          type: string
+          examples: ["/api/v1"]
+          description: Base path of the versioned API.
+        features:
+          type: object
+          description: Capability flags; unknown extra flags are tolerated by clients.
+          required:
+            - standard_projects
+            - e2ee_projects
+            - encrypted_guest_links
+            - stem_separation
+            - max_chunk_bytes
+          properties:
+            standard_projects:
+              type: boolean
+            e2ee_projects:
+              type: boolean
+            encrypted_guest_links:
+              type: boolean
+            stem_separation:
+              type: boolean
+            max_chunk_bytes:
+              type: integer
+              minimum: 1
+              description: Server-advertised maximum chunk size for resumable uploads.
+        server_public_key:
+          type: string
+          description: |
+            base64url-encoded pinned installation identity key (proposal; this is identity
+            pinning, not comprehensive TLS certificate pinning).
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              examples: ["last_owner", "version_conflict", "checksum_mismatch", "rate_limited"]
+            message:
+              type: string
+            details:
+              type: object
+              additionalProperties: true
+
+    SessionCreate:
+      type: object
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 12
+        device_name:
+          type: string
+          maxLength: 100
+
+    InvitationAccept:
+      type: object
+      required: [password]
+      properties:
+        display_name:
+          type: string
+          maxLength: 120
+        password:
+          type: string
+          minLength: 12
+
+    Session:
+      type: object
+      required: [id, user_id, created_at, expires_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+
+    SessionToken:
+      type: object
+      required: [token, token_expires_at, session]
+      properties:
+        token:
+          type: string
+          description: Bearer token for subsequent requests.
+        token_expires_at:
+          type: string
+          format: date-time
+        session:
+          $ref: "#/components/schemas/Session"
+
+    User:
+      type: object
+      required: [id, email, status, is_admin, storage_used_bytes, storage_quota_bytes]
+      properties:
+        is_admin: { type: boolean }
+        storage_used_bytes: { type: integer, minimum: 0 }
+        storage_quota_bytes: { type: [integer, "null"], minimum: 0 }
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        display_name:
+          type: ["string", "null"]
+        status:
+          $ref: "#/components/schemas/UserStatus"
+
+    AdminUser:
+      type: object
+      required:
+        [
+          id,
+          email,
+          display_name,
+          status,
+          is_admin,
+          storage_used_bytes,
+          storage_quota_bytes,
+          created_at,
+          last_seen_at,
+        ]
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        display_name: { type: [string, "null"] }
+        status: { type: string, enum: [active, disabled] }
+        is_admin: { type: boolean }
+        storage_used_bytes: { type: integer, minimum: 0 }
+        storage_quota_bytes: { type: [integer, "null"], minimum: 0 }
+        created_at: { type: string, format: date-time }
+        last_seen_at: { type: [string, "null"], format: date-time }
+
+    CurrentSession:
+      type: object
+      required: [session, user]
+      properties:
+        session:
+          $ref: "#/components/schemas/Session"
+        user:
+          $ref: "#/components/schemas/User"
+
+    UserStatus:
+      type: string
+      enum: [invited, active, disabled]
+
+    ProjectRole:
+      type: string
+      enum: [owner, editor, reviewer, listener]
+
+    EncryptionMode:
+      type: string
+      enum: [standard, e2ee]
+
+    Project:
+      type: object
+      required: [id, owner_user_id, encryption_mode, version, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        owner_user_id:
+          type: string
+          format: uuid
+        encryption_mode:
+          $ref: "#/components/schemas/EncryptionMode"
+        title:
+          type: ["string", "null"]
+        metadata:
+          type: object
+          additionalProperties: true
+        version:
+          type: integer
+          minimum: 0
+          description: Optimistic concurrency version for updates.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: ["string", "null"]
+          format: date-time
+        artwork_blob_id:
+          type: ["string", "null"]
+          format: uuid
+          description: Committed JPEG blob for the project cover. Absent or null when none is stored.
+        song_count:
+          type: integer
+          minimum: 0
+          description: Number of songs in the project. Populated by the project list route only; clients treat an absent value as 0.
+
+    ProjectCreate:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+        metadata:
+          type: object
+          additionalProperties: true
+
+    ProjectUpdate:
+      type: object
+      required: [expected_version]
+      properties:
+        expected_version:
+          type: integer
+          minimum: 0
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+        metadata:
+          type: object
+          additionalProperties: true
+
+    SongLyrics:
+      {
+        "type": "object",
+        "required": ["lines", "version", "agents"],
+        "properties":
+          {
+            "lines":
+              {
+                "type": "array",
+                "maxItems": 400,
+                "items": { "type": "string", "maxLength": 2000 },
+              },
+            "version":
+              {
+                "type": "integer",
+                "minimum": 0,
+                "description": "Optimistic concurrency version. 0 means no document has been stored yet.",
+              },
+            "agents":
+              {
+                "type": "array",
+                "items":
+                  {
+                    "type": "object",
+                    "properties":
+                      {
+                        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_-]{1,40}$" },
+                        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+                      },
+                    "required": ["id", "name"],
+                  },
+                "maxItems": 40,
+              },
+          },
+      }
+
+    SongLyricsUpdate:
+      {
+        "type": "object",
+        "required": ["lines", "expected_version"],
+        "properties":
+          {
+            "lines":
+              {
+                "type": "array",
+                "maxItems": 400,
+                "items": { "type": "string", "maxLength": 2000 },
+              },
+            "expected_version": { "type": "integer", "minimum": 0 },
+            "agents":
+              {
+                "type": "array",
+                "items":
+                  {
+                    "type": "object",
+                    "properties":
+                      {
+                        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_-]{1,40}$" },
+                        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+                      },
+                    "required": ["id", "name"],
+                  },
+                "maxItems": 40,
+              },
+          },
+      }
+
+    LyricWord:
+      type: object
+      required: [text, start_sec, end_sec]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 200
+        start_sec:
+          type: number
+          minimum: 0
+        end_sec:
+          type: number
+          minimum: 0
+
+    LyricTimingLine:
+      {
+        "type": "object",
+        "required": ["start_sec", "end_sec", "words"],
+        "properties":
+          {
+            "start_sec": { "type": "number", "minimum": 0 },
+            "end_sec": { "type": "number", "minimum": 0 },
+            "words":
+              {
+                "type": "array",
+                "maxItems": 80,
+                "items": { "$ref": "#/components/schemas/LyricWord" },
+              },
+            "agent": { "type": "string", "maxLength": 200 },
+            "background": { "type": "boolean" },
+          },
+      }
+
+    LyricTiming:
+      type: object
+      required: [lines, version]
+      properties:
+        lines:
+          type: array
+          maxItems: 400
+          items:
+            $ref: "#/components/schemas/LyricTimingLine"
+        version:
+          type: integer
+          minimum: 0
+
+    LyricTimingUpdate:
+      type: object
+      required: [lines, expected_version]
+      properties:
+        lines:
+          type: array
+          maxItems: 400
+          items:
+            $ref: "#/components/schemas/LyricTimingLine"
+        expected_version:
+          type: integer
+          minimum: 0
+
+    ProjectList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Project"
+        next_cursor:
+          type: ["string", "null"]
+
+    Membership:
+      {
+        "type": "object",
+        "required": ["project_id", "user_id", "role", "status", "display_name", "email"],
+        "properties":
+          {
+            "project_id": { "type": "string", "format": "uuid" },
+            "user_id": { "type": "string", "format": "uuid" },
+            "role": { "$ref": "#/components/schemas/ProjectRole" },
+            "status": { "type": "string", "enum": ["invited", "active", "removed"] },
+            "created_at": { "type": "string", "format": "date-time" },
+            "accepted_at": { "type": ["string", "null"], "format": "date-time" },
+            "display_name": { "type": ["string", "null"] },
+            "email": { "type": "string", "format": "email" },
+            "invitation_url":
+              {
+                "type": "string",
+                "description": "Only returned by invitation creation to the project owner.",
+              },
+          },
+      }
+
+    MembershipList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Membership"
+
+    MemberInvite:
+      type: object
+      required: [email, role]
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          $ref: "#/components/schemas/ProjectRole"
+
+    MemberUpdate:
+      type: object
+      properties:
+        role:
+          $ref: "#/components/schemas/ProjectRole"
+        status:
+          type: string
+          enum: [active, removed]
+
+    Folder:
+      type: object
+      required: [id, project_id, title, position, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        parent_id:
+          type: ["string", "null"]
+          format: uuid
+        title:
+          type: string
+        position:
+          type: integer
+        version:
+          type: integer
+          minimum: 0
+
+    FolderCreate:
+      type: object
+      required: [title]
+      properties:
+        parent_id:
+          type: ["string", "null"]
+          format: uuid
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+        position:
+          type: integer
+
+    FolderUpdate:
+      type: object
+      required: [expected_version]
+      properties:
+        expected_version:
+          type: integer
+          minimum: 0
+        parent_id:
+          type: ["string", "null"]
+          format: uuid
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+        position:
+          type: integer
+
+    FolderList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Folder"
+
+    Song:
+      type: object
+      required: [id, project_id, title, position, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        folder_id:
+          type: ["string", "null"]
+          format: uuid
+        title:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        position:
+          type: integer
+        version:
+          type: integer
+          minimum: 0
+
+    SongCreate:
+      type: object
+      required: [project_id, title]
+      properties:
+        project_id:
+          type: string
+          format: uuid
+        folder_id:
+          type: ["string", "null"]
+          format: uuid
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+        metadata:
+          type: object
+          additionalProperties: true
+
+    SongUpdate:
+      type: object
+      required: [expected_version]
+      properties:
+        expected_version:
+          type: integer
+          minimum: 0
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+        metadata:
+          type: object
+          additionalProperties: true
+
+    SongList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Song"
+
+    SongWithCounts:
+      allOf:
+        - $ref: "#/components/schemas/Song"
+        - type: object
+          required: [variant_count, duration_sec]
+          properties:
+            variant_count:
+              type: integer
+              minimum: 0
+              description: Number of variants on the song.
+            duration_sec:
+              type: ["number", "null"]
+              description: Song duration in seconds read from song metadata, or null when not recorded.
+
+    ProjectDetail:
+      type: object
+      required: [project, songs, members]
+      properties:
+        project:
+          $ref: "#/components/schemas/Project"
+        songs:
+          type: array
+          items:
+            $ref: "#/components/schemas/SongWithCounts"
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/Membership"
+
+    Variant:
+      type: object
+      required: [id, song_id, name, position, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        song_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        position:
+          type: integer
+        version:
+          type: integer
+          minimum: 0
+        current_revision_id:
+          type: ["string", "null"]
+          format: uuid
+
+    VariantCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        position:
+          type: integer
+
+    VariantUpdate:
+      type: object
+      required: [expected_version]
+      properties:
+        expected_version:
+          type: integer
+          minimum: 0
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        position:
+          type: integer
+
+    VariantList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Variant"
+
+    AudioRevision:
+      {
+        "type": "object",
+        "required":
+          [
+            "id",
+            "variant_id",
+            "blob_id",
+            "created_by_user_id",
+            "created_at",
+            "created_by_display_name",
+            "playback_blob_id",
+            "playback_status",
+          ],
+        "properties":
+          {
+            "id": { "type": "string", "format": "uuid" },
+            "variant_id": { "type": "string", "format": "uuid" },
+            "blob_id": { "type": "string", "format": "uuid" },
+            "parent_revision_id": { "type": ["string", "null"], "format": "uuid" },
+            "note": { "type": ["string", "null"] },
+            "created_by_user_id": { "type": "string", "format": "uuid" },
+            "created_at": { "type": "string", "format": "date-time" },
+            "created_by_display_name": { "type": ["string", "null"] },
+            "playback_blob_id": { "type": ["string", "null"], "format": "uuid" },
+            "playback_status":
+              {
+                "type": "string",
+                "enum": ["none", "pending", "ready", "failed", "skipped"],
+                "default": "none",
+              },
+          },
+      }
+
+    AudioRevisionList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AudioRevision"
+
+    SongDetailVariant:
+      type: object
+      required: [variant, revisions]
+      properties:
+        variant:
+          $ref: "#/components/schemas/Variant"
+        revisions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AudioRevision"
+
+    SongDetail:
+      type: object
+      required: [song, project, members, variants, lyrics, timing, position]
+      properties:
+        song:
+          $ref: "#/components/schemas/Song"
+        project:
+          $ref: "#/components/schemas/Project"
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/Membership"
+        variants:
+          type: array
+          items:
+            $ref: "#/components/schemas/SongDetailVariant"
+        lyrics:
+          $ref: "#/components/schemas/SongLyrics"
+        timing:
+          description: Timing map for the head revision of the first variant that has one, or null when no variant has a head revision.
+          oneOf:
+            - $ref: "#/components/schemas/LyricTiming"
+            - type: "null"
+        position:
+          type: integer
+          minimum: 1
+          description: 1-based index of the song among its project's songs ordered by position then created_at.
+
+    SelectHead:
+      type: object
+      required: [revision_id, expected_version]
+      properties:
+        revision_id:
+          type: string
+          format: uuid
+        expected_version:
+          type: integer
+          minimum: 0
+
+    UploadCreate:
+      type: object
+      required: [project_id, variant_id, size_bytes, mime_type]
+      properties:
+        project_id:
+          type: string
+          format: uuid
+        variant_id:
+          type: string
+          format: uuid
+        size_bytes:
+          type: integer
+          minimum: 0
+        mime_type:
+          type: string
+          maxLength: 255
+        sha256:
+          type: ["string", "null"]
+          pattern: "^[0-9a-f]{64}$"
+          description: Optional declared checksum, verified at finalize.
+        display_name:
+          type: ["string", "null"]
+          maxLength: 500
+          description: Original filename, stored as metadata only (never used as a storage path).
+
+    UploadSession:
+      {
+        "type": "object",
+        "required":
+          [
+            "id",
+            "project_id",
+            "variant_id",
+            "size_bytes",
+            "received_bytes",
+            "max_chunk_bytes",
+            "expires_at",
+            "status",
+          ],
+        "properties":
+          {
+            "id": { "type": "string", "format": "uuid" },
+            "project_id": { "type": "string", "format": "uuid" },
+            "variant_id": { "type": "string", "format": "uuid" },
+            "size_bytes": { "type": "integer" },
+            "received_bytes": { "type": "integer", "description": "Next expected upload offset." },
+            "max_chunk_bytes": { "type": "integer" },
+            "expires_at": { "type": "string", "format": "date-time" },
+            "status":
+              { "type": "string", "enum": ["open", "finalized", "cancelled", "failed", "expired"] },
+          },
+      }
+
+    UploadChunkAck:
+      type: object
+      required: [upload_id, received_bytes]
+      properties:
+        upload_id:
+          type: string
+          format: uuid
+        received_bytes:
+          type: integer
+          description: Next expected upload offset after this chunk.
+
+    FinalizeUpload:
+      type: object
+      required: [sha256]
+      properties:
+        sha256:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        note:
+          type: ["string", "null"]
+          maxLength: 2000
+
+    BlobManifest:
+      type: object
+      required: [blob_id, size_bytes, sha256, mime_type, chunk_size, chunk_count]
+      properties:
+        blob_id:
+          type: string
+          format: uuid
+        size_bytes:
+          type: integer
+        sha256:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        mime_type:
+          type: string
+        chunk_size:
+          type: integer
+        chunk_count:
+          type: integer
+
+    SyncEvent:
+      type: object
+      required: [cursor, project_id, operation_id, entity_class, created_at]
+      properties:
+        cursor:
+          type: string
+        project_id:
+          type: string
+          format: uuid
+        operation_id:
+          type: string
+          format: uuid
+        entity_class:
+          type: string
+          examples: ["project", "folder", "song", "variant", "audio_revision", "comment"]
+        entity_id:
+          type: ["string", "null"]
+          format: uuid
+        actor_user_id:
+          type: ["string", "null"]
+          format: uuid
+        payload:
+          type: object
+          additionalProperties: true
+          description: Operation payload; opaque ciphertext fields for E2EE projects.
+        created_at:
+          type: string
+          format: date-time
+
+    SyncPage:
+      type: object
+      required: [events]
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/SyncEvent"
+        next_cursor:
+          type: ["string", "null"]
+
+    MutationRequest:
+      type: object
+      required: [operation_id, project_id, entity_class, operation, payload]
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+          description: Client-generated; replaying it returns the original result.
+        project_id:
+          type: string
+          format: uuid
+        entity_class:
+          type: string
+        entity_id:
+          type: ["string", "null"]
+          format: uuid
+        operation:
+          type: string
+          examples: ["create", "update", "move", "select_head", "comment"]
+        expected_version:
+          type: ["integer", "null"]
+          minimum: 0
+        payload:
+          type: object
+          additionalProperties: true
+
+    MutationResult:
+      type: object
+      required: [operation_id, status]
+      properties:
+        operation_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [applied, conflict, rejected]
+        event_cursor:
+          type: ["string", "null"]
+        conflict:
+          type: ["object", "null"]
+          additionalProperties: true
+          description: Local/remote/expected versions when status is conflict.

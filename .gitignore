@@ -1,0 +1,7 @@
+# Never commit the generated configuration, data directory or local backups.
+.env
+.env.*
+!.env.example
+data/
+backup-*/
+*.bak

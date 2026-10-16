@@ -1,0 +1,111 @@
+# The Archive - self-host stack (published images).
+#
+# Quick start:  ./install.sh
+# Full guide:   docs/self-hosting.md  and  README.md
+#
+# This stack uses PREBUILT images from GHCR; it does not build from source. For a development
+# build from a checkout, use infra/compose/compose.yaml instead.
+#
+# The API applies database migrations on start. PostgreSQL is never published on the host.
+
+name: thearchive
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    environment:
+      POSTGRES_USER: music
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required (run install.sh)}
+      POSTGRES_DB: music
+    volumes:
+      - ${ARCHIVE_ROOT:-./data}/db:/var/lib/postgresql
+      - ${ARCHIVE_ROOT:-./data}/run:/var/run/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U music -d music"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 768m
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  api:
+    image: ghcr.io/expensiverest/thearchive-api:${ARCHIVE_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://music:${POSTGRES_PASSWORD}@postgres:5432/music
+      STORAGE_ROOT: /var/lib/music-workspace/storage
+      HOST: 0.0.0.0
+      PORT: "8130"
+      MAX_CHUNK_BYTES: ${MAX_CHUNK_BYTES:-8388608}
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-2147483648}
+      STAGING_QUOTA_BYTES: ${STAGING_QUOTA_BYTES:-10737418240}
+      UPLOAD_TTL_MS: ${UPLOAD_TTL_MS:-86400000}
+      # 0 (or unset) = unlimited per-user storage quota.
+      DEFAULT_USER_QUOTA_BYTES: ${DEFAULT_USER_QUOTA_BYTES:-0}
+      # Clients older than this are told to update (semver; default allows everything).
+      MIN_APP_VERSION: ${MIN_APP_VERSION:-0.0.0}
+      # Invitation email and public links. Empty SMTP_URL = log transport (links only in the log).
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-}
+    ports:
+      - "${API_BIND_ADDR:-127.0.0.1}:8130:8130"
+    volumes:
+      - ${ARCHIVE_ROOT:-./data}/storage:/var/lib/music-workspace/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8130/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    mem_limit: 384m
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  worker:
+    image: ghcr.io/expensiverest/thearchive-worker:${ARCHIVE_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      HEARTBEAT_FILE: /var/lib/music-workspace/storage/worker-heartbeat
+      HEARTBEAT_INTERVAL_MS: "5000"
+      DATABASE_URL: postgres://music:${POSTGRES_PASSWORD}@postgres:5432/music
+      STORAGE_ROOT: /var/lib/music-workspace/storage
+      PLAYBACK_POLL_MS: "5000"
+    volumes:
+      - ${ARCHIVE_ROOT:-./data}/storage:/var/lib/music-workspace/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "const s=require('fs').statSync('/var/lib/music-workspace/storage/worker-heartbeat');process.exit(Date.now()-s.mtimeMs<30000?0:1)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    mem_limit: 512m
+    cpus: 1.0
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }

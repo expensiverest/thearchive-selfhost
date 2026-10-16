@@ -1,0 +1,22 @@
+# Caddy config for The Archive (optional automatic HTTPS).
+# Used only with compose.caddy.yaml:
+#   docker compose --env-file .env -f compose.yaml -f compose.caddy.yaml up -d
+#
+# Requires DOMAIN (and optionally ACME_EMAIL) set in .env, ports 80/443 reachable from the
+# internet, and a DNS A/AAAA record for DOMAIN pointing at this host.
+
+{$DOMAIN} {
+	encode zstd gzip
+
+	# The API is the only service Caddy talks to; it stays on the private compose network.
+	reverse_proxy api:8130
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+
+	# Obtain and renew the certificate automatically. Falls back to the ACME default
+	# (a random email) if ACME_EMAIL is empty; set it in production.
+	tls {$ACME_EMAIL}
+}

@@ -1,0 +1,32 @@
+# Optional overlay: automatic HTTPS for The Archive with Caddy.
+#
+#   docker compose --env-file .env -f compose.yaml -f compose.caddy.yaml up -d
+#
+# Requires DOMAIN (and ACME_EMAIL) in .env, ports 80/443 open to the internet, and DNS for DOMAIN
+# pointing at this host. Caddy reaches the API over the private compose network as `api:8130`.
+#
+# When this overlay is used, set API_BIND_ADDR=127.0.0.1 (the default) in .env so the API port is
+# not published publicly; Caddy is the only public entry point.
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?DOMAIN is required for the Caddy overlay}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ${ARCHIVE_ROOT:-./data}/caddy/data:/data
+      - ${ARCHIVE_ROOT:-./data}/caddy/config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    mem_limit: 128m
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }

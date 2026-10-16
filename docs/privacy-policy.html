@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>The Archive — Privacy policy</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f6f6f4;
+        --fg: #1c1c1a;
+        --muted: #5c5c57;
+        --card: #ffffff;
+        --border: #e2e2dc;
+        --accent: #3b5bdb;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #14140f;
+          --fg: #ecebe6;
+          --muted: #a3a29b;
+          --card: #1e1e19;
+          --border: #33332c;
+          --accent: #8ea2ff;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--fg);
+        font:
+          16px/1.6 -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          Roboto,
+          Helvetica,
+          Arial,
+          sans-serif;
+      }
+      main {
+        max-width: 760px;
+        margin: 0 auto;
+        padding: 40px 20px 80px;
+      }
+      h1 {
+        font-size: 1.9rem;
+        line-height: 1.2;
+        margin: 0 0 4px;
+      }
+      h2 {
+        font-size: 1.25rem;
+        margin: 2.2em 0 0.6em;
+      }
+      h3 {
+        font-size: 1.02rem;
+        margin: 1.4em 0 0.4em;
+      }
+      p,
+      li {
+        color: var(--fg);
+      }
+      .updated {
+        color: var(--muted);
+        font-size: 0.92rem;
+        margin: 0 0 1.6em;
+      }
+      .placeholder {
+        background: rgba(255, 196, 0, 0.28);
+        border-radius: 4px;
+        padding: 0 4px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.92em;
+      }
+      a {
+        color: var(--accent);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 1em 0;
+        font-size: 0.95rem;
+      }
+      th,
+      td {
+        text-align: left;
+        vertical-align: top;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--border);
+      }
+      thead th {
+        border-bottom: 2px solid var(--border);
+      }
+      .table-wrap {
+        overflow-x: auto;
+      }
+      .callout {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 16px 18px;
+        margin: 1.4em 0;
+      }
+      ol,
+      ul {
+        padding-left: 1.3em;
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.92em;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Privacy policy</h1>
+      <p class="updated">Last updated: 2026-10-15</p>
+
+      <p>
+        This is the privacy policy for The Archive (the mobile app and server software). It is a
+        template: each server is run by its own operator, so the operator of the server you connect
+        to is the data controller for the data on that server. See
+        <a href="#self-hosters">For self-hosters</a>.
+      </p>
+      <p>Contact: danielanderson@myglassflow.com.</p>
+
+      <h2>The short version</h2>
+      <ul>
+        <li>
+          The app itself collects nothing. It has no analytics, no telemetry, no advertising, and no
+          third-party trackers.
+        </li>
+        <li>
+          Everything you create is sent only to the server you choose to connect to. That server is
+          run by the person or organisation who invited you (the operator), not by the makers of the
+          app.
+        </li>
+        <li>
+          The operator can see the content stored on their server, unless a project uses optional
+          end-to-end encryption, which is <strong>not implemented yet</strong>.
+        </li>
+        <li>You can delete your account from inside the app.</li>
+      </ul>
+
+      <h2>What the app does and does not do</h2>
+      <p>
+        <strong>The app does not collect or send anything to the app's authors.</strong> It makes no
+        network requests except to the server you explicitly configure. There is no account with the
+        app's authors, no crash reporting, and no usage analytics.
+      </p>
+      <p>
+        <strong>The app stores on your device:</strong> the server address and identity, your
+        session token (in the system Keychain / secure store), and any files you choose to download
+        for offline use. Deleting the app removes this local data.
+      </p>
+      <p>
+        A <strong>demo mode</strong> runs entirely on built-in sample data with no network and no
+        account; nothing you do in demo mode is sent anywhere or saved to a server.
+      </p>
+
+      <h2>What the server stores</h2>
+      <p>
+        If you connect to a server and sign in, that server stores the data needed to run your
+        workspace:
+      </p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Why</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Email address</td>
+              <td>Sign-in and invitations</td>
+            </tr>
+            <tr>
+              <td>Display name</td>
+              <td>Show who did what</td>
+            </tr>
+            <tr>
+              <td>Password (salted Argon2id hash, never plain)</td>
+              <td>Authentication</td>
+            </tr>
+            <tr>
+              <td>Device name</td>
+              <td>Distinguish your devices in settings</td>
+            </tr>
+            <tr>
+              <td>Audio files and revisions</td>
+              <td>Your music workspace content</td>
+            </tr>
+            <tr>
+              <td>Lyrics, notes, comments, titles, filenames</td>
+              <td>Your music workspace content</td>
+            </tr>
+            <tr>
+              <td>Session and invitation records (hashed tokens)</td>
+              <td>Keep you signed in; invite collaborators</td>
+            </tr>
+            <tr>
+              <td>Storage usage and quota</td>
+              <td>Show your usage and enforce limits</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Server logs are structured and redact tokens and creative content; the software is designed
+        not to log titles, lyrics, notes or filenames.
+      </p>
+
+      <h2>Who can see your data</h2>
+      <ul>
+        <li>
+          <strong>You</strong>, and the collaborators you share a project with (owner, editor,
+          reviewer, listener).
+        </li>
+        <li>
+          <strong>The server operator</strong>, who controls the hardware and can access the
+          database and files. For standard (non-encrypted) projects the operator holds the plaintext
+          by design. Optional end-to-end encryption is planned but
+          <strong>not implemented yet</strong>; until it lands, no project is hidden from its
+          operator.
+        </li>
+        <li>Nobody else. The app's authors receive nothing.</li>
+      </ul>
+
+      <h2>Retention and deletion</h2>
+      <ul>
+        <li>Data stays on the server until you or the operator deletes it.</li>
+        <li>
+          <strong>You can delete your account in the app</strong> (Settings → Security → Delete
+          account). You are asked to confirm your password. If you own a project that still has
+          other active members, deletion is refused until you transfer ownership or remove those
+          members. On success, your sessions are revoked and your data is deleted; where records
+          must be kept for audit integrity, personal fields are anonymised instead of the whole row
+          being removed.
+        </li>
+        <li>Ask the operator for anything else (backups, server-wide records).</li>
+      </ul>
+
+      <h2>Children</h2>
+      <p>
+        The app is not directed at children and the operator does not knowingly let them create
+        accounts.
+      </p>
+
+      <h2>Changes</h2>
+      <p>
+        This policy may change with the software. The operator should publish their own version with
+        their contact details and the date it took effect.
+      </p>
+
+      <h2 id="self-hosters">For self-hosters</h2>
+      <p>
+        If you run The Archive for other people, you are the data controller for their data and this
+        document is a template. Before you open your server to anyone:
+      </p>
+      <ol>
+        <li>
+          Replace <span class="placeholder">danielanderson@myglassflow.com</span> above with a
+          monitored address, and set the "Last updated" date.
+        </li>
+        <li>Add your identity (name or organisation) and where the server is hosted.</li>
+        <li>Describe how long you keep data and backups, and how a user asks you to delete it.</li>
+        <li>
+          State that you, as operator, can access content on your server; do not promise more
+          privacy than the software provides. Do not claim end-to-end encryption — it is not
+          implemented.
+        </li>
+        <li>
+          If you serve users in a jurisdiction with specific rules (GDPR, CCPA, …), add the rights
+          those users have and your lawful basis for processing.
+        </li>
+        <li>Publish the policy at a stable URL reachable from your server or your invite page.</li>
+      </ol>
+      <div class="callout">
+        <strong>Operator note.</strong> Host the file as-is (it needs no external resources) and
+        point your invite page or app at it. The same text as Markdown lives in
+        <code>privacy-policy.md</code> in this folder.
+      </div>
+    </main>
+  </body>
+</html>
