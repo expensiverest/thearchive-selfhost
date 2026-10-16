@@ -39,7 +39,7 @@ writes `.env` with mode 600, pulls the images, waits for the API to be healthy a
 CLI (`node services/api/src/cli.ts create-owner --email … --name …`) to create the first account. It
 prints a one-time password — save it.
 
-To pin a version, set `ARCHIVE_VERSION` (for example `v0.1.0`); the default is `latest`.
+To pin a version, set `ARCHIVE_VERSION` (for example `0.1.0`); the default is `latest`.
 
 ## Public HTTPS
 
@@ -57,7 +57,7 @@ in the app. See `docs/self-hosting.md` for Cloudflare Tunnel and Tailscale optio
 ## Upgrade
 
 ```bash
-bash upgrade.sh v0.2.0     # or: bash upgrade.sh   (uses ARCHIVE_VERSION from .env)
+bash upgrade.sh 0.2.0     # or: bash upgrade.sh   (uses ARCHIVE_VERSION from .env)
 ```
 
 The script takes a backup first (unless `SKIP_BACKUP=1`), pulls the tag, restarts the stack and

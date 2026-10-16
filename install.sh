@@ -11,7 +11,7 @@
 # Environment overrides:
 #   OWNER_EMAIL, OWNER_NAME    first owner account (prompted if unset)
 #   ARCHIVE_ROOT               data directory (default: ./data next to this script)
-#   ARCHIVE_VERSION            image tag (default: latest; set e.g. v0.1.0 to pin)
+#   ARCHIVE_VERSION            image tag (default: latest; set e.g. 0.1.0 to pin)
 #   PUBLIC_BASE_URL            public HTTPS URL for invitation links (optional)
 #   API_BIND_ADDR              publish address (default: 127.0.0.1)
 #

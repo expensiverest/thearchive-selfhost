@@ -123,7 +123,7 @@ mailbox all do. See `docs/email.md` for setup, DNS (SPF/DKIM/DMARC) and testing.
 
 ```bash
 cd thearchive-selfhost
-bash upgrade.sh            # or: bash upgrade.sh v0.2.0
+bash upgrade.sh            # or: bash upgrade.sh 0.2.0
 ```
 
 `upgrade.sh` backs up, pulls the new tag, restarts and health-checks the stack. On failure it

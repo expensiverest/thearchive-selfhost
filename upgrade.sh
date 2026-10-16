@@ -6,7 +6,7 @@
 #
 # Usage:
 #   bash upgrade.sh                 # upgrade to the tag in .env (ARCHIVE_VERSION)
-#   bash upgrade.sh v0.2.0          # switch to a specific tag and restart
+#   bash upgrade.sh 0.2.0          # switch to a specific tag and restart
 #   SKIP_BACKUP=1 bash upgrade.sh   # skip the pre-upgrade backup (not recommended)
 #
 # The API refuses to start if the database contains migrations the running code does not know
